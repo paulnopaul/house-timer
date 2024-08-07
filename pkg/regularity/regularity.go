@@ -13,11 +13,11 @@ func day(count int) time.Duration {
 }
 
 func week(count int) time.Duration {
-	return day(7)
+	return day(7) * time.Duration(count)
 }
 
 func month(count int) time.Duration {
-	return day(30)
+	return day(30) * time.Duration(count)
 }
 
 type durFunc func(int) time.Duration
@@ -29,6 +29,9 @@ var regularitites = []struct {
 	{"день", day},
 	{"неделя", week},
 	{"месяц", month},
+	{"д", day},
+	{"н", week},
+	{"м", month},
 }
 
 func nearestDuration(word string) durFunc {
@@ -48,7 +51,7 @@ func ExtractRegularity(regularityString string) (time.Duration, error) {
 	if len(splitted) != 2 {
 		return time.Duration(0), ErrArgCount
 	}
-	count, err := strconv.Atoi(splitted[0])
+	count, err := strconv.ParseUint(splitted[0], 10, 64)
 	if err != nil {
 		return time.Duration(0), ErrFirstArg
 	}
@@ -56,5 +59,5 @@ func ExtractRegularity(regularityString string) (time.Duration, error) {
 		return time.Duration(0), ErrZero
 	}
 	dur := nearestDuration(splitted[1])
-	return dur(count), nil
+	return dur(int(count)), nil
 }

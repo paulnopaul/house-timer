@@ -1,0 +1,27 @@
+-- +goose Up
+CREATE TABLE Tasks (
+    ID INTEGER PRIMARY KEY AUTOINCREMENT,
+    CreatedAt INTEGER,
+    DeletedAt INTEGER,
+
+    ChatID  INTEGER NOT NULL,
+
+    Name VARCHAR(256),
+    Regularity INTEGER
+);
+
+CREATE TABLE TaskEvents (
+    ID INTEGER PRIMARY KEY AUTOINCREMENT,
+    CreatedAt INTEGER,
+    DeletedAt INTEGER,
+
+    ChatID  INTEGER NOT NULL,
+    TaskID INTEGER,
+
+    Type VARCHAR(64),
+    Step VARCHAR(64)
+);
+
+-- +goose Down
+DROP TABLE IF EXISTS Tasks;
+DROP TABLE IF EXISTS TaskEvents;
