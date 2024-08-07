@@ -4,17 +4,19 @@ import (
 	"context"
 	"database/sql"
 	"embed"
-	"house-timer/internal/pkg/repos/sqlite_repo"
+	"github.com/stretchr/testify/require"
 	"math/rand"
 	"testing"
+	"time"
+
+	"house-timer/internal/pkg/repos/sqlite_repo"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/pressly/goose/v3"
-	"github.com/stretchr/testify/assert"
 )
 
+//go:generate rm -rf ./zz.generated_test_migrations
 //go:generate cp -r ../../../../migrations ./zz.generated_test_migrations
-
 //go:embed zz.generated_test_migrations/*.sql
 var embedMigrations embed.FS
 
@@ -49,36 +51,72 @@ func TestTaskUsecase(t *testing.T) {
 	chatID := generateChatID()
 	ctx := context.Background()
 	err := taskUsecase.CreateEmptyTask(ctx, chatID)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	taskName := "NewTask1"
 	res, err := taskUsecase.HandleTaskMessage(ctx, chatID, taskName)
-	assert.NoError(t, err)
-	assert.True(t, res.IsTaskNameCreated())
+	require.NoError(t, err)
+	require.True(t, res.IsTaskNameCreated())
 
 	res, err = taskUsecase.HandleTaskMessage(ctx, chatID, "2 дня")
-	assert.NoError(t, err)
-	assert.True(t, res.IsTaskCreated())
+	require.NoError(t, err)
+	require.True(t, res.IsTaskCreated())
 
 	tasks, err := taskStorage.GetTasksForChat(ctx, chatID)
-	assert.NoError(t, err)
-	assert.Len(t, tasks, 1)
-	assert.Equal(t, tasks[0].Name, taskName)
+	require.NoError(t, err)
+	require.Len(t, tasks, 1)
+	require.Equal(t, tasks[0].Name, taskName)
+	require.Equal(t, tasks[0].Regularity, time.Hour*24*2)
 
 	err = taskUsecase.CreateEmptyTask(ctx, chatID)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	taskName = "NewTask2"
 	res, err = taskUsecase.HandleTaskMessage(ctx, chatID, taskName)
-	assert.NoError(t, err)
-	assert.True(t, res.IsTaskNameCreated())
+	require.NoError(t, err)
+	require.True(t, res.IsTaskNameCreated())
 
-	res, err = taskUsecase.HandleTaskMessage(ctx, chatID, "2 дня")
-	assert.NoError(t, err)
-	assert.True(t, res.IsTaskCreated())
+	res, err = taskUsecase.HandleTaskMessage(ctx, chatID, "10 месяцев")
+	require.NoError(t, err)
+	require.True(t, res.IsTaskCreated())
 
 	tasks, err = taskStorage.GetTasksForChat(ctx, chatID)
-	assert.NoError(t, err)
-	assert.Len(t, tasks, 2)
-	assert.Equal(t, tasks[1].Name, taskName)
+	require.NoError(t, err)
+	require.Len(t, tasks, 2)
+	require.Equal(t, tasks[1].Name, taskName)
+	require.Equal(t, tasks[1].Regularity, time.Hour*24*30*10)
+
+	err = taskUsecase.StartTaskEdit(ctx, chatID)
+	require.NoError(t, err)
+	res, err = taskUsecase.HandleTaskMessage(ctx, chatID, "1")
+	require.NoError(t, err)
+	require.True(t, res.IsGotEditNumberTaskResult())
+
+	err = taskUsecase.StartTaskNameEdit(ctx, chatID)
+	require.NoError(t, err)
+	res, err = taskUsecase.HandleTaskMessage(ctx, chatID, "Новое имя")
+	require.NoError(t, err)
+	require.True(t, res.IsGotEditNameTaskResult())
+
+	tasks, err = taskStorage.GetTasksForChat(ctx, chatID)
+	require.NoError(t, err)
+	require.Len(t, tasks, 2)
+	require.Equal(t, tasks[0].Name, "Новое имя")
+
+	err = taskUsecase.ResetTaskEdit(ctx, chatID)
+	require.NoError(t, err)
+	res, err = taskUsecase.HandleTaskMessage(ctx, chatID, "2")
+	require.NoError(t, err)
+	require.True(t, res.IsGotEditNumberTaskResult())
+
+	err = taskUsecase.StartTaskNameEdit(ctx, chatID)
+	require.NoError(t, err)
+	res, err = taskUsecase.HandleTaskMessage(ctx, chatID, "Новое имя 2")
+	require.NoError(t, err)
+	require.True(t, res.IsGotEditNameTaskResult())
+
+	tasks, err = taskStorage.GetTasksForChat(ctx, chatID)
+	require.NoError(t, err)
+	require.Len(t, tasks, 2)
+	require.Equal(t, tasks[1].Name, "Новое имя 2")
 }
