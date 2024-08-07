@@ -4,8 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"house-timer/internal/pkg/entities"
 	"time"
+
+	"house-timer/internal/pkg/entities"
 )
 
 type SqliteTaskEventStorage struct {
@@ -18,12 +19,16 @@ func NewSqliteTaskEventStorage(db *sql.DB) *SqliteTaskEventStorage {
 	}
 }
 
-func (ts *SqliteTaskEventStorage) CreateTaskEvent(_ context.Context, chatID int64) (int64, error) {
+func (ts *SqliteTaskEventStorage) CreateTaskEvent(_ context.Context,
+	chatID int64,
+	event entities.TaskEventType,
+	step entities.TaskEventStep,
+) (int64, error) {
 	result, err := ts.db.Exec("INSERT INTO TaskEvents(ChatID, CreatedAt, Type, Step) VALUES(?, ?, ?, ?)",
 		chatID,
 		time.Now().Unix(),
-		entities.TaskCreationEvent,
-		entities.TaskCreationWaitName)
+		event,
+		step)
 	if err != nil {
 		return 0, err
 	}
@@ -48,7 +53,7 @@ func (ts *SqliteTaskEventStorage) AddTaskID(_ context.Context, eventID int64, ta
 
 var ErrNoTaskEvent = errors.New("ErrNoTasks")
 
-func (ts *SqliteTaskEventStorage) GetCurrrentTaskEvent(_ context.Context, chatID int64) (entities.UserTaskEvent, error) {
+func (ts *SqliteTaskEventStorage) GetCurrentTaskEvent(_ context.Context, chatID int64) (entities.UserTaskEvent, error) {
 	rows, err := ts.db.Query(
 		`SELECT ID, Type, Step, TaskID, ChatID 
 		FROM TaskEvents 
@@ -77,63 +82,44 @@ func (ts *SqliteTaskEventStorage) GetCurrrentTaskEvent(_ context.Context, chatID
 		return entities.UserTaskEvent{}, ErrNoTaskEvent
 	}
 	if len(res) > 1 {
-		return entities.UserTaskEvent{}, errors.New("Ты че ахуел, я же сказал ТОЛЬКО ОДНО СУКА СОБЫТИЕ ТАСКА НА ЧАТ")
+		return entities.UserTaskEvent{}, errors.New("ты че ахуел, я же сказал ТОЛЬКО ОДНО СУКА СОБЫТИЕ ТАСКА НА ЧАТ")
 	}
 	return res[0], nil
 }
 
 var TaskEventStepFlow = map[entities.TaskEventStep]entities.TaskEventStep{
+	// creation
 	entities.TaskCreationWaitName:       entities.TaskCreationWaitRegularity,
 	entities.TaskCreationWaitRegularity: entities.TaskCreationCompleted,
 }
 
-func (ts *SqliteTaskEventStorage) MoveNext(_ context.Context, eventID int64) error {
+func (ts *SqliteTaskEventStorage) UpdateStep(_ context.Context, chatID int64, newStep entities.TaskEventStep) error {
 	tx, err := ts.db.Begin()
 	if err != nil {
 		return err
 	}
-	row := tx.QueryRow(
-		`SELECT Step
-		FROM TaskEvents
-		WHERE ID = ?`,
-		eventID)
-	if err := row.Err(); err != nil {
-		tx.Rollback()
-		return err
-	}
-	var step entities.TaskEventStep
-	if err := row.Scan(&step); err != nil {
-		tx.Rollback()
-		return err
-	}
-
-	nextStep, ok := TaskEventStepFlow[step]
-	if !ok {
-		tx.Rollback()
-		return errors.New("чета непонятный шаг евента какой-то")
-	}
-
 	_, err = tx.Exec(
 		`UPDATE TaskEvents
 		SET Step = ?
-		WHERE ID = ?`,
-		nextStep, eventID)
-
+		WHERE ChatID = ?`,
+		newStep, chatID)
 	if err != nil {
 		tx.Rollback()
 		return err
 	}
-	_, isNotLast := TaskEventStepFlow[nextStep]
-	if !isNotLast {
-		_, err = tx.Exec(
-			`UPDATE TaskEvents
+	return tx.Commit()
+}
+
+func (ts *SqliteTaskEventStorage) DeleteEvent(ctx context.Context, eventID int64) error {
+	tx, err := ts.db.Begin()
+	_, err = tx.ExecContext(ctx,
+		`UPDATE TaskEvents
 			SET DeletedAt = ?
 			WHERE ID = ?`,
-			time.Now().Unix(), eventID)
-		if err != nil {
-			tx.Rollback()
-			return err
-		}
+		time.Now().Unix(), eventID)
+	if err != nil {
+		tx.Rollback()
+		return err
 	}
 	return tx.Commit()
 }
